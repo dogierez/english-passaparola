@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Passaparola - English Vocabulary Game</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #1a1a2e;
+            color: white;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            overflow: hidden;
+        }
+
+        #game-container {
+            position: relative;
+            width: 580px;
+            height: 580px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #alphabet-circle {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+        }
+
+        .letter-node {
+            position: absolute;
+            width: 36px;
+            height: 36px;
+            background-color: #0f3460;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-weight: bold;
+            font-size: 15px;
+            transform: translate(-50%, -50%);
+            transition: all 0.3s ease;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+            border: 2px solid #16213e;
+            z-index: 5;
+        }
+
+        .active {
+            transform: translate(-50%, -50%) scale(1.3);
+            border-color: #fff;
+            box-shadow: 0 0 15px rgba(255, 255, 255, 0.8);
+            z-index: 15;
+        }
+
+        .correct { background-color: #4caf50; color: white; border-color: #4caf50; }
+        .wrong { background-color: #f44336; color: white; border-color: #f44336; }
+        .passed { background-color: #ff9800; color: white; border-color: #ff9800; }
+
+        #center-box {
+            background-color: #16213e;
+            padding: 25px;
+            border-radius: 15px;
+            text-align: center;
+            z-index: 10;
+            width: 300px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.6);
+        }
+
+        #center-box h2 {
+            margin: 0 0 5px 0;
+            font-size: 40px;
+            color: #e94560;
+        }
+
+        #center-box p {
+            font-size: 16px;
+            margin-bottom: 15px;
+            min-height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #e0e0e0;
+        }
+
+        input {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 10px;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            box-sizing: border-box;
+            text-align: center;
+        }
+
+        input:focus { outline: 2px solid #e94560; }
+
+        .buttons {
+            display: flex;
+            gap: 8px;
+        }
+
+        button {
+            flex: 1;
+            padding: 10px;
+            border: none;
+            border-radius: 5px;
+            font-size: 14px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background-color 0.2s;
+        }
+
+        #submit-btn { background-color: #4caf50; color: white; }
+        #mic-btn { background-color: #00bcd4; color: white; }
+        #pass-btn { background-color: #ff9800; color: white; }
+        
+        .menu-btn {
+            background-color: #e94560;
+            color: white;
+            width: 100%;
+            margin-bottom: 10px;
+            padding: 12px;
+            font-size: 16px;
+        }
+
+        #game-screen, #result-screen { display: none; }
+        #menu-screen { display: block; }
+        
+        #status-speech {
+            font-size: 13px;
+            color: #00bcd4;
+            margin-top: 5px;
+            min-height: 18px;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <div id="alphabet-circle"></div>
+        
+        <div id="center-box">
+            <!-- Set Selection Screen -->
+            <div id="menu-screen">
+                <h3 style="color: white; margin-top:0;">Select Vocabulary Set</h3>
+                <div id="set-buttons-container"></div>
+            </div>
+
+            <!-- Game Screen -->
+            <div id="game-screen">
+                <h2 id="current-letter">A</h2>
+                <p id="question-text">Listening definition...</p>
+                <input type="text" id="answer-input" placeholder="Type or speak answer..." autocomplete="off">
+                <div class="buttons">
+                    <button id="submit-btn">Submit</button>
+                    <button id="mic-btn">🎙️ Speak</button>
+                    <button id="pass-btn">Pass</button>
+                </div>
+                <div id="status-speech">Microphone is off</div>
+            </div>
+            
+            <!-- Result Screen -->
+            <div id="result-screen">
+                <h2 style="font-size: 32px;">Congratulations!</h2>
+                <p id="score-text">Correct: 0<br>Wrong: 0</p>
+                <button class="menu-btn" onclick="returnToMenu()">Return to Menu</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Corrected Database: No answer words in definitions
+        const wordSets = {
+            "Set 1: Basic Adjectives": [
+                { letter: 'A', question: 'Feeling or showing strong annoyance, displeasure, or hostility.', answer: 'Angry' },
+                { letter: 'B', question: 'Very pleasing to look at; highly attractive.', answer: 'Beautiful' },
+                { letter: 'C', question: 'Having a very low temperature; not warm.', answer: 'Cold' },
+                { letter: 'D', question: 'Able or likely to cause harm or injury.', answer: 'Dangerous' },
+                { letter: 'E', question: 'Happening or done before the usual or expected time.', answer: 'Early' },
+                { letter: 'F', question: 'Moving or capable of moving at high speed.', answer: 'Fast' },
+                { letter: 'G', question: 'To be desired or approved of; having high quality.', answer: 'Good' },
+                { letter: 'H', question: 'Feeling or showing pleasure or contentment.', answer: 'Happy' },
+                { letter: 'I', question: 'Of great significance or value.', answer: 'Important' },
+                { letter: 'J', question: 'Feeling or showing envy of someone else\'s possessions or achievements.', answer: 'Jealous' },
+                { letter: 'K', question: 'Having a friendly, generous, and considerate nature.', answer: 'Kind' },
+                { letter: 'L', question: 'Unwilling to work or use energy.', answer: 'Lazy' },
+                { letter: 'M', question: 'Relating to the present or recent times.', answer: 'Modern' },
+                { letter: 'N', question: 'Easily agitated, anxious, or alarmed.', answer: 'Nervous' },
+                { letter: 'O', question: 'Having lived or existed for a long time; not new.', answer: 'Old' },
+                { letter: 'P', question: 'Lacking sufficient money to live comfortably.', answer: 'Poor' },
+                { letter: 'Q', question: 'Making little or no noise.', answer: 'Quiet' },
+                { letter: 'R', question: 'Having a great deal of money or assets.', answer: 'Rich' },
+                { letter: 'S', question: 'Feeling or showing sorrow; unhappy.', answer: 'Sad' },
+                { letter: 'T', question: 'Of great or more than average height.', answer: 'Tall' },
+                { letter: 'U', question: 'Unpleasant or repulsive, especially in appearance.', answer: 'Ugly' },
+                { letter: 'V', question: 'Worth a great deal of money.', answer: 'Valuable' },
+                { letter: 'W', question: 'Lacking the power to perform physically demanding tasks.', answer: 'Weak' },
+                { letter: 'Y', question: 'Having lived or existed for only a short time.', answer: 'Young' }
+            ]
+        };
+
+        let currentQuestions = [];
+        let currentIndex = 0;
+        let stats = { correct: 0, wrong: 0, passed: 0 };
+        const circleRadius = 245; 
+        const centerX = 290;
+        const centerY = 290;
+        
+        const circleContainer = document.getElementById('alphabet-circle');
+        const setButtonsContainer = document.getElementById('set-buttons-container');
+        const menuScreen = document.getElementById('menu-screen');
+        const gameScreen = document.getElementById('game-screen');
+        const resultScreen = document.getElementById('result-screen');
+        const letterDisplay = document.getElementById('current-letter');
+        const questionDisplay = document.getElementById('question-text');
+        const answerInput = document.getElementById('answer-input');
+        const statusSpeech = document.getElementById('status-speech');
+
+        // Text-to-Speech Function
+        function speakText(text) {
+            if ('speechSynthesis' in window) {
+                window.speechSynthesis.cancel(); 
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.lang = 'en-US';
+                utterance.rate = 0.9; 
+                window.speechSynthesis.speak(utterance);
+            }
+        }
+
+        // Speech Recognition Function
+        function startListening() {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (!SpeechRecognition) {
+                alert("Your browser does not support Speech Recognition. Please use Chrome.");
+                return;
+            }
+
+            const recognition = new SpeechRecognition();
+            recognition.lang = 'en-US';
+            recognition.interimResults = false;
+            recognition.maxAlternatives = 1;
+
+            statusSpeech.innerText = "Listening... Speak now!";
+            statusSpeech.style.color = "#ff9800";
+
+            recognition.start();
+
+            recognition.onresult = function(event) {
+                const speechResult = event.results[0][0].transcript;
+                answerInput.value = speechResult.replace(/\.$/, ''); // Remove trailing periods from dictation
+                statusSpeech.innerText = `Heard: "${speechResult}"`;
+                statusSpeech.style.color = "#4caf50";
+                checkAnswer();
+            };
+
+            recognition.onerror = function(event) {
+                statusSpeech.innerText = "Could not hear, try again.";
+                statusSpeech.style.color = "#f44336";
+            };
+
+            recognition.onspeechend = function() {
+                recognition.stop();
+            };
+        }
+
+        function createMenu() {
+            setButtonsContainer.innerHTML = '';
+            for (const setName in wordSets) {
+                const btn = document.createElement('button');
+                btn.className = 'menu-btn';
+                btn.innerText = setName;
+                btn.onclick = () => startGame(setName);
+                setButtonsContainer.appendChild(btn);
+            }
+        }
+
+        function startGame(setName) {
+            currentQuestions = JSON.parse(JSON.stringify(wordSets[setName])); 
+            currentIndex = 0;
+            stats = { correct: 0, wrong: 0, passed: 0 };
+            
+            menuScreen.style.display = 'none';
+            resultScreen.style.display = 'none';
+            gameScreen.style.display = 'block';
+            
+            drawCircle();
+            loadQuestion();
+        }
+
+        function drawCircle() {
+            circleContainer.innerHTML = '';
+            const total = currentQuestions.length;
+            currentQuestions.forEach((q, index) => {
+                const angle = (index / total) * (2 * Math.PI) - (Math.PI / 2);
+                const x = centerX + circleRadius * Math.cos(angle);
+                const y = centerY + circleRadius * Math.sin(angle);
+                
+                const node = document.createElement('div');
+                node.className = 'letter-node';
+                node.id = 'node-' + index;
+                node.innerText = q.letter;
+                node.style.left = x + 'px';
+                node.style.top = y + 'px';
+                circleContainer.appendChild(node);
+            });
+        }
+
+        function loadQuestion() {
+            let found = false;
+            const total = currentQuestions.length;
+            for(let i=0; i < total; i++) {
+                if(!currentQuestions[currentIndex].status || currentQuestions[currentIndex].status === 'passed') {
+                    found = true;
+                    break;
+                }
+                currentIndex = (currentIndex + 1) % total;
+            }
+
+            if(!found) {
+                endGame();
+                return;
+            }
+
+            document.querySelectorAll('.letter-node').forEach(node => node.classList.remove('active'));
+            const activeNode = document.getElementById('node-' + currentIndex);
+            if(activeNode) activeNode.classList.add('active');
+
+            const currentQ = currentQuestions[currentIndex];
+            letterDisplay.innerText = currentQ.letter;
+            questionDisplay.innerText = currentQ.question;
+            answerInput.value = '';
+            statusSpeech.innerText = "Ready to listen";
+            statusSpeech.style.color = "#00bcd4";
+            
+            // Auto-read the question out loud
+            speakText(currentQ.question);
+            answerInput.focus();
+        }
+
+        function checkAnswer() {
+            const userAnswer = answerInput.value.trim().toLowerCase();
+            const correctAnswer = currentQuestions[currentIndex].answer.toLowerCase();
+            const activeNode = document.getElementById('node-' + currentIndex);
+            const total = currentQuestions.length;
+
+            if (userAnswer === correctAnswer) {
+                currentQuestions[currentIndex].status = 'correct';
+                activeNode.classList.add('correct');
+                activeNode.classList.remove('passed');
+                stats.correct++;
+            } else if (userAnswer !== '') {
+                currentQuestions[currentIndex].status = 'wrong';
+                activeNode.classList.add('wrong');
+                activeNode.classList.remove('passed');
+                stats.wrong++;
+            } else {
+                passQuestion();
+                return;
+            }
+            
+            currentIndex = (currentIndex + 1) % total;
+            loadQuestion();
+        }
+
+        function passQuestion() {
+            const activeNode = document.getElementById('node-' + currentIndex);
+            const total = currentQuestions.length;
+            if (currentQuestions[currentIndex].status !== 'passed') {
+                currentQuestions[currentIndex].status = 'passed';
+                activeNode.classList.add('passed');
+            }
+            currentIndex = (currentIndex + 1) % total;
+            loadQuestion();
+        }
+
+        function endGame() {
+            window.speechSynthesis.cancel();
+            gameScreen.style.display = 'none';
+            resultScreen.style.display = 'block';
+            document.getElementById('score-text').innerHTML = `Correct: ${stats.correct} <br> Wrong: ${stats.wrong}`;
+        }
+
+        function returnToMenu() {
+            resultScreen.style.display = 'none';
+            menuScreen.style.display = 'block';
+            circleContainer.innerHTML = '';
+        }
+
+        document.getElementById('submit-btn').addEventListener('click', checkAnswer);
+        document.getElementById('mic-btn').addEventListener('click', startListening);
+        document.getElementById('pass-btn').addEventListener('click', passQuestion);
+        
+        answerInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') checkAnswer();
+        });
+
+        createMenu();
+    </script>
+</body>
+</html>
