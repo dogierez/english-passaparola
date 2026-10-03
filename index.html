@@ -67,8 +67,11 @@
             border-radius: 15px;
             text-align: center;
             z-index: 10;
-            width: 300px;
+            width: 320px;
             box-shadow: 0 4px 15px rgba(0, 0, 0, 0.6);
+            display: flex;
+            flex-direction: column;
+            max-height: 90vh;
         }
 
         #center-box h2 {
@@ -128,6 +131,10 @@
             padding: 12px;
             font-size: 16px;
         }
+        
+        #show-answers-btn {
+            background-color: #2196f3;
+        }
 
         #game-screen, #result-screen { display: none; }
         #menu-screen { display: block; }
@@ -137,6 +144,27 @@
             color: #00bcd4;
             margin-top: 5px;
             min-height: 18px;
+        }
+
+        #missed-words-container {
+            text-align: left;
+            max-height: 180px;
+            overflow-y: auto;
+            background: #0f3460;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            font-size: 14px;
+            display: none;
+        }
+        
+        #missed-words-container ul {
+            padding-left: 20px;
+            margin: 0;
+        }
+        
+        #missed-words-container li {
+            margin-bottom: 10px;
         }
     </style>
 </head>
@@ -159,23 +187,28 @@
                 <input type="text" id="answer-input" placeholder="Type or speak answer..." autocomplete="off">
                 <div class="buttons">
                     <button id="submit-btn">Submit</button>
-                    <button id="mic-btn">🎙️ Speak</button>
+                    <button id="mic-btn" onclick="toggleMicrophone()">🎙️ Mic</button>
                     <button id="pass-btn">Pass</button>
                 </div>
-                <div id="status-speech">Microphone is off</div>
+                <div id="status-speech">Mic is off (Press Space to toggle)</div>
             </div>
             
             <!-- Result Screen -->
             <div id="result-screen">
-                <h2 style="font-size: 32px;">Congratulations!</h2>
-                <p id="score-text">Correct: 0<br>Wrong: 0</p>
+                <h2 style="font-size: 32px; margin-top: 0;">Game Over!</h2>
+                <p id="score-text" style="margin-bottom: 10px; min-height: auto;">Correct: 0 &nbsp;|&nbsp; Wrong: 0</p>
+                
+                <div id="missed-words-container">
+                    <!-- Missed words list will be injected here -->
+                </div>
+
+                <button id="show-answers-btn" class="menu-btn">Display Answers</button>
                 <button class="menu-btn" onclick="returnToMenu()">Return to Menu</button>
             </div>
         </div>
     </div>
 
     <script>
-        // Corrected Database: No answer words in definitions
         const wordSets = {
             "Set 1: Basic Adjectives": [
                 { letter: 'A', question: 'Feeling or showing strong annoyance, displeasure, or hostility.', answer: 'Angry' },
@@ -202,16 +235,32 @@
                 { letter: 'V', question: 'Worth a great deal of money.', answer: 'Valuable' },
                 { letter: 'W', question: 'Lacking the power to perform physically demanding tasks.', answer: 'Weak' },
                 { letter: 'Y', question: 'Having lived or existed for only a short time.', answer: 'Young' }
+            ],
+            "Set 2: Basic Verbs": [
+                { letter: 'A', question: 'To receive something willingly.', answer: 'Accept' },
+                { letter: 'B', question: 'To start doing something.', answer: 'Begin' },
+                { letter: 'C', question: 'To make something new using your imagination.', answer: 'Create' },
+                { letter: 'D', question: 'To move rhythmically to music.', answer: 'Dance' },
+                { letter: 'E', question: 'To put food into your mouth and swallow it.', answer: 'Eat' },
+                { letter: 'F', question: 'To discover something you were looking for.', answer: 'Find' },
+                { letter: 'G', question: 'To move from one place to another.', answer: 'Go' }
             ]
         };
 
         let currentQuestions = [];
         let currentIndex = 0;
-        let stats = { correct: 0, wrong: 0, passed: 0 };
+        let stats = { correct: 0, wrong: 0 };
         const circleRadius = 245; 
         const centerX = 290;
         const centerY = 290;
         
+        let recognition = null;
+        let isListening = false;
+        
+        // Ses Değişkenleri
+        let availableVoices = [];
+        let bestVoice = null;
+
         const circleContainer = document.getElementById('alphabet-circle');
         const setButtonsContainer = document.getElementById('set-buttons-container');
         const menuScreen = document.getElementById('menu-screen');
@@ -221,19 +270,67 @@
         const questionDisplay = document.getElementById('question-text');
         const answerInput = document.getElementById('answer-input');
         const statusSpeech = document.getElementById('status-speech');
+        const micBtn = document.getElementById('mic-btn');
+        const missedContainer = document.getElementById('missed-words-container');
+        const showAnsBtn = document.getElementById('show-answers-btn');
 
-        // Text-to-Speech Function
+        // Tarayıcıdaki sesleri yükle ve en iyisini seç
+        function loadVoices() {
+            availableVoices = window.speechSynthesis.getVoices();
+            if (availableVoices.length > 0) {
+                // Chrome'daki Google Online sesleri veya Edge'deki kaliteli Microsoft sesleri aranıyor
+                bestVoice = availableVoices.find(v => v.name.includes('Google US English')) ||
+                            availableVoices.find(v => v.name.includes('Microsoft Aria Online')) ||
+                            availableVoices.find(v => v.name.includes('Microsoft Jenny Online')) ||
+                            availableVoices.find(v => v.name.includes('Samantha')) ||
+                            availableVoices.find(v => v.lang === 'en-US' && v.name.includes('Premium')) ||
+                            availableVoices.find(v => v.lang === 'en-US'); // Bulamazsa standart İngilizceyi al
+            }
+        }
+
+        // Sesler yüklendiğinde tetiklenir (Tarayıcı gecikmelerini önlemek için)
+        if ('speechSynthesis' in window) {
+            window.speechSynthesis.onvoiceschanged = loadVoices;
+            loadVoices(); // İlk yüklemeyi dene
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.code === 'Space' && gameScreen.style.display === 'block') {
+                if (document.activeElement === answerInput && answerInput.value.trim() !== '') {
+                    return; 
+                }
+                e.preventDefault(); 
+                toggleMicrophone();
+            }
+        });
+
+        // En iyi sesle metni oku
         function speakText(text) {
             if ('speechSynthesis' in window) {
                 window.speechSynthesis.cancel(); 
                 const utterance = new SpeechSynthesisUtterance(text);
+                
+                // Eğer sesler hala yüklenmediyse tekrar zorla
+                if (!bestVoice) loadVoices();
+                
+                if (bestVoice) {
+                    utterance.voice = bestVoice;
+                }
+                
                 utterance.lang = 'en-US';
-                utterance.rate = 0.9; 
+                utterance.rate = 0.9; // Biraz yavaş ve net anlaşılır
                 window.speechSynthesis.speak(utterance);
             }
         }
 
-        // Speech Recognition Function
+        function toggleMicrophone() {
+            if (isListening) {
+                if (recognition) recognition.stop();
+            } else {
+                startListening();
+            }
+        }
+
         function startListening() {
             const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
             if (!SpeechRecognition) {
@@ -241,32 +338,43 @@
                 return;
             }
 
-            const recognition = new SpeechRecognition();
-            recognition.lang = 'en-US';
-            recognition.interimResults = false;
-            recognition.maxAlternatives = 1;
+            if (!recognition) {
+                recognition = new SpeechRecognition();
+                recognition.lang = 'en-US';
+                recognition.interimResults = false;
+                recognition.maxAlternatives = 1;
 
-            statusSpeech.innerText = "Listening... Speak now!";
-            statusSpeech.style.color = "#ff9800";
+                recognition.onstart = function() {
+                    isListening = true;
+                    statusSpeech.innerText = "Listening... (Space to stop)";
+                    statusSpeech.style.color = "#ff9800";
+                    micBtn.style.backgroundColor = "#ff9800";
+                };
 
-            recognition.start();
+                recognition.onresult = function(event) {
+                    const speechResult = event.results[0][0].transcript;
+                    answerInput.value = speechResult.replace(/\.$/, ''); 
+                    statusSpeech.innerText = `Heard: "${speechResult}"`;
+                    statusSpeech.style.color = "#4caf50";
+                    checkAnswer();
+                };
 
-            recognition.onresult = function(event) {
-                const speechResult = event.results[0][0].transcript;
-                answerInput.value = speechResult.replace(/\.$/, ''); // Remove trailing periods from dictation
-                statusSpeech.innerText = `Heard: "${speechResult}"`;
-                statusSpeech.style.color = "#4caf50";
-                checkAnswer();
-            };
+                recognition.onerror = function(event) {
+                    statusSpeech.innerText = "Could not hear, try again.";
+                    statusSpeech.style.color = "#f44336";
+                };
 
-            recognition.onerror = function(event) {
-                statusSpeech.innerText = "Could not hear, try again.";
-                statusSpeech.style.color = "#f44336";
-            };
+                recognition.onend = function() {
+                    isListening = false;
+                    statusSpeech.innerText = "Mic is off (Press Space to toggle)";
+                    statusSpeech.style.color = "#00bcd4";
+                    micBtn.style.backgroundColor = "#00bcd4";
+                };
+            }
 
-            recognition.onspeechend = function() {
-                recognition.stop();
-            };
+            try {
+                recognition.start();
+            } catch (e) {} 
         }
 
         function createMenu() {
@@ -283,7 +391,7 @@
         function startGame(setName) {
             currentQuestions = JSON.parse(JSON.stringify(wordSets[setName])); 
             currentIndex = 0;
-            stats = { correct: 0, wrong: 0, passed: 0 };
+            stats = { correct: 0, wrong: 0 };
             
             menuScreen.style.display = 'none';
             resultScreen.style.display = 'none';
@@ -335,10 +443,9 @@
             letterDisplay.innerText = currentQ.letter;
             questionDisplay.innerText = currentQ.question;
             answerInput.value = '';
-            statusSpeech.innerText = "Ready to listen";
+            statusSpeech.innerText = "Mic is off (Press Space to toggle)";
             statusSpeech.style.color = "#00bcd4";
             
-            // Auto-read the question out loud
             speakText(currentQ.question);
             answerInput.focus();
         }
@@ -381,10 +488,42 @@
 
         function endGame() {
             window.speechSynthesis.cancel();
+            if (isListening && recognition) recognition.stop();
+            
             gameScreen.style.display = 'none';
             resultScreen.style.display = 'block';
-            document.getElementById('score-text').innerHTML = `Correct: ${stats.correct} <br> Wrong: ${stats.wrong}`;
+            document.getElementById('score-text').innerHTML = `Correct: ${stats.correct} &nbsp;|&nbsp; Wrong: ${stats.wrong}`;
+
+            let missedHTML = '<ul>';
+            let hasMissed = false;
+            
+            currentQuestions.forEach(q => {
+                if (q.status !== 'correct') { 
+                    hasMissed = true;
+                    missedHTML += `<li>
+                        <b>${q.letter}</b> - ${q.question} 
+                        <br><span class="hidden-answer" style="display:none; color:#4caf50; font-weight:bold; margin-top:5px; display:inline-block;">Answer: ${q.answer}</span>
+                    </li>`;
+                }
+            });
+            missedHTML += '</ul>';
+            
+            if (hasMissed) {
+                missedContainer.innerHTML = missedHTML;
+                missedContainer.style.display = 'block';
+                showAnsBtn.style.display = 'block';
+                
+                document.querySelectorAll('.hidden-answer').forEach(el => el.style.display = 'none');
+            } else {
+                missedContainer.style.display = 'none';
+                showAnsBtn.style.display = 'none';
+            }
         }
+        
+        showAnsBtn.addEventListener('click', function() {
+            document.querySelectorAll('.hidden-answer').forEach(el => el.style.display = 'inline-block');
+            this.style.display = 'none'; 
+        });
 
         function returnToMenu() {
             resultScreen.style.display = 'none';
@@ -393,7 +532,6 @@
         }
 
         document.getElementById('submit-btn').addEventListener('click', checkAnswer);
-        document.getElementById('mic-btn').addEventListener('click', startListening);
         document.getElementById('pass-btn').addEventListener('click', passQuestion);
         
         answerInput.addEventListener('keypress', function(e) {
